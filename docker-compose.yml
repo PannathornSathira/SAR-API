@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: sar_api_qdrant
+    ports:
+      - "6335:6333"
+      - "6336:6334"
+    volumes:
+      - ./backend/qdrant_storage:/qdrant/storage
+    restart: always

@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.cache/
+.pytest_cache/
+
+# Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+.eslintcache
+
+# Environment / Credentials
+.env
+.env.local
+.env.*.local
+*.env
+
+# Database Isolation Storage
+backend/qdrant_storage/
+backend/app/collections_registry.json
+
+# Logs
+logs/
+*.log
+
+# Editor / IDE Configs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# OS Files
+.DS_Store
+.DS_Store?
+ehthumbs.db
+Thumbs.db

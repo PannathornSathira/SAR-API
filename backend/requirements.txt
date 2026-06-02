@@ -1,0 +1,16 @@
+fastapi>=0.100.0
+uvicorn>=0.22.0
+qdrant-client>=1.6.0
+langchain>=0.1.0
+langchain-qdrant>=0.1.0
+langchain-openai>=0.1.0
+python-docx>=0.8.11
+pypdf>=3.9.0
+pythainlp>=4.0.0
+sentence-transformers>=2.2.2
+python-multipart>=0.0.6
+langdetect>=1.0.9
+python-dotenv>=1.0.0
+torch>=2.0.0
+pydantic>=2.0
+fastembed>=0.2.0
