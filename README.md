@@ -6,8 +6,8 @@ A standalone, single-user system that allows users to upload documents, automati
 
 ## System Components
 
-1. **FastAPI Backend (`backend/`)**: Manages file text extraction, LLM FAQ generation, Qdrant collection creation (dense + sparse configurations), and handles dynamic query endpoints (`/api/v1/query/{collection_name}`) with tokenization, retrieval, and CrossEncoder reranking.
-2. **Vue 3 Admin Frontend (`frontend/`)**: Provides drag-and-drop ingestion management, an interactive FAQ review grid, and an API Playground to test retrieval metrics and inspect match types.
+1. **FastAPI Backend (`backend/`)**: Manages file text extraction (with page numbers), customizable LLM FAQ generation (by language and count), query expansion (paraphrasing questions x5 before embedding), Qdrant collection creation (dense + sparse configurations), and handles dynamic query endpoints (`/api/v1/query/{collection_name}`) with tokenization, retrieval, and CrossEncoder reranking. The backend also calculates and returns OpenAI API cost estimations for transparency.
+2. **Vue 3 Admin Frontend (`frontend/`)**: Provides drag-and-drop multi-document ingestion staging, configurable extraction settings (language, target question count), sequential processing with progress tracking, an interactive FAQ review grid, and an API Playground to test retrieval metrics and inspect match types.
 3. **Qdrant Vector Database**: Storing and retrieving collections in hybrid mode (OpenAI Embeddings + BM25 Sparse Embeddings).
 
 ---

@@ -53,81 +53,112 @@
         </div>
       </div>
 
+      <!-- Settings Panel -->
+      <div class="panel-card" style="margin-top: 1rem;">
+        <h3 style="margin-bottom: 1.25rem;">FAQ Settings</h3>
+        <div class="form-group">
+          <label class="form-label">Language</label>
+          <input 
+            type="text" 
+            class="input-control" 
+            v-model="store.language" 
+            placeholder="e.g. Thai, English"
+            :disabled="store.statusStep > 0"
+          />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Approximate Questions per Document</label>
+          <input 
+            type="number" 
+            class="input-control" 
+            v-model="store.numQuestions" 
+            min="1"
+            :disabled="store.statusStep > 0"
+          />
+        </div>
+      </div>
+
       <!-- File Upload Zone -->
       <div class="panel-card" style="margin-top: 1rem;">
-        <h3 style="margin-bottom: 1.25rem;">Upload Document</h3>
+        <h3 style="margin-bottom: 1.25rem;">Upload Document(s)</h3>
         
         <div 
           class="dropzone" 
-          :class="{ active: isDragActive }"
+          :class="{ active: isDragActive, disabled: !isTargetValid }"
           @dragover.prevent="onDragOver"
           @dragleave.prevent="onDragLeave"
           @drop.prevent="onDrop"
-          @click="triggerFileInput"
+          @click="isTargetValid ? triggerFileInput() : null"
           v-if="store.statusStep === 0"
         >
           <div class="upload-icon">📥</div>
-          <p>Drag & Drop your document here</p>
+          <p v-if="!isTargetValid" style="color: var(--text-muted);">Please configure Target Database first</p>
+          <p v-else>Drag & Drop your documents here</p>
           <span>Supports .pdf, .docx, .txt</span>
           <input 
             type="file" 
             ref="fileInput" 
             style="display: none;" 
             accept=".pdf,.docx,.txt"
+            multiple
             @change="onFileSelected"
+            :disabled="!isTargetValid"
           />
         </div>
 
-        <!-- Selected File Status Badge -->
-        <div v-else class="file-info-badge">
-          <span>Active File:</span>
-          <span class="file-name" :title="store.filename">{{ store.filename }}</span>
-          <button 
-            class="btn-danger-text" 
-            style="padding: 0 0.25rem;"
-            @click="cancelUpload" 
-            :disabled="store.statusStep === 4"
-          >
-            Reset
+        <!-- Pending Files Badge -->
+        <div v-if="store.statusStep === 0 && pendingFiles.length > 0" style="margin-top: 1rem;">
+          <h4 style="margin-bottom: 0.5rem; font-size: 0.9rem;">Staged Files:</h4>
+          <div v-for="(file, index) in pendingFiles" :key="index" class="file-info-badge" style="margin-bottom: 0.5rem;">
+            <span class="file-name" :title="file.name">{{ file.name }}</span>
+            <button 
+              class="btn-danger-text" 
+              style="padding: 0 0.25rem;"
+              @click="removePendingFile(index)" 
+            >
+              Remove
+            </button>
+          </div>
+          <button class="btn-primary" style="width: 100%; margin-top: 0.5rem;" @click="processStagedFiles">
+            Process {{ pendingFiles.length }} Document(s)
           </button>
         </div>
 
+        <!-- Processing Status -->
+        <div v-if="store.statusStep > 0 && store.statusStep < 3" class="file-info-badge" style="margin-top: 1rem;">
+          <span v-if="store.statusStep === 1">Processing: {{ store.processedFiles + 1 }} / {{ store.totalFiles }}</span>
+          <span class="file-name" :title="store.currentFileName">{{ store.currentFileName }}</span>
+          <span class="spinner" style="width: 16px; height: 16px;"></span>
+        </div>
+        
+        <!-- Processing Cost (Shown when done) -->
+        <div v-if="store.statusStep >= 3" class="file-info-badge" style="margin-top: 1rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem;">
+          <span><strong>Total Files:</strong> {{ store.totalFiles }}</span>
+          <span><strong>Extraction Cost:</strong> ${{ store.totalExtractionCost.toFixed(4) }}</span>
+          <span v-if="store.statusStep >= 5"><strong>Expansion Cost:</strong> ${{ store.totalExpansionCost.toFixed(4) }}</span>
+          <span v-if="store.statusStep >= 5" style="color: var(--accent-purple); font-weight: bold;">
+            <strong>Total Cost:</strong> ${{ (store.totalExtractionCost + store.totalExpansionCost).toFixed(4) }}
+          </span>
+        </div>
+
         <!-- Step timeline status tracker -->
-        <div v-if="store.statusStep > 0" class="timeline-tracker">
+        <div v-if="store.statusStep > 0" class="timeline-tracker" style="margin-top: 1.5rem;">
           
           <!-- Step 1: Text extraction -->
           <div class="timeline-step" :class="{ 
-            active: store.statusStep === 1 || store.statusStep === 2, 
-            completed: store.statusStep > 2 
+            active: store.statusStep === 1, 
+            completed: store.statusStep > 1 
           }">
             <div class="step-indicator">
-              <span v-if="store.statusStep > 2">✓</span>
+              <span v-if="store.statusStep > 1">✓</span>
               <span v-else>1</span>
             </div>
             <div class="step-details">
               <div class="step-title">
-                Extracting Clean Text
+                Extracting & Generating FAQs
                 <span v-if="store.statusStep === 1" class="spinner"></span>
               </div>
-              <div class="step-desc">Reading clean paragraph/page layout text</div>
-            </div>
-          </div>
-
-          <!-- Step 2: FAQ Extraction -->
-          <div class="timeline-step" :class="{ 
-            active: store.statusStep === 2, 
-            completed: store.statusStep > 2 
-          }">
-            <div class="step-indicator">
-              <span v-if="store.statusStep > 2">✓</span>
-              <span v-else>2</span>
-            </div>
-            <div class="step-details">
-              <div class="step-title">
-                Generating FAQ Pairs
-                <span v-if="store.statusStep === 2" class="spinner"></span>
-              </div>
-              <div class="step-desc">gpt-4o-mini structured analysis</div>
+              <div class="step-desc">Processing all selected documents</div>
             </div>
           </div>
 
@@ -138,7 +169,7 @@
           }">
             <div class="step-indicator">
               <span v-if="store.statusStep > 3">✓</span>
-              <span v-else>3</span>
+              <span v-else>2</span>
             </div>
             <div class="step-details">
               <div class="step-title">Administrative Review</div>
@@ -153,14 +184,14 @@
           }">
             <div class="step-indicator">
               <span v-if="store.statusStep > 4">✓</span>
-              <span v-else>4</span>
+              <span v-else>3</span>
             </div>
             <div class="step-details">
               <div class="step-title">
-                Qdrant Embedding & Ingestion
+                Expanding & Ingesting
                 <span v-if="store.statusStep === 4" class="spinner"></span>
               </div>
-              <div class="step-desc">Dense (large-3) & Sparse (BM25) configurations</div>
+              <div class="step-desc">Generating x5 variations and embedding in Qdrant</div>
             </div>
           </div>
 
@@ -168,7 +199,7 @@
           <div class="timeline-step" :class="{ completed: store.statusStep === 5 }">
             <div class="step-indicator">
               <span v-if="store.statusStep === 5">✓</span>
-              <span v-else>5</span>
+              <span v-else>4</span>
             </div>
             <div class="step-details">
               <div class="step-title">Success</div>
@@ -195,15 +226,15 @@
         <div class="empty-review-icon">📑</div>
         <h2>FAQ Generation Grid</h2>
         <p style="max-width: 400px; font-size: 0.9rem;">
-          Select a database target and drag a document into the upload zone to automatically generate FAQ pairs for review.
+          Select a database target, configure settings, and stage documents into the upload zone to automatically generate FAQ pairs for review.
         </p>
       </div>
 
       <!-- Ingesting state -->
       <div v-else-if="store.statusStep === 4" class="empty-review-state">
         <div class="spinner" style="width: 40px; height: 40px; border-width: 3px; border-top-color: var(--accent-purple); margin-bottom: 1rem;"></div>
-        <h2>Embedding FAQ Pairs...</h2>
-        <p>Generating dense vector embeddings and sparse indexes in Qdrant.</p>
+        <h2>Expanding & Embedding FAQ Pairs...</h2>
+        <p>Generating x5 question variations and dense vector embeddings in Qdrant.</p>
       </div>
 
       <!-- Success State -->
@@ -211,7 +242,7 @@
         <div style="font-size: 4rem; margin-bottom: 0.5rem;">🎉</div>
         <h2>Ingestion Completed!</h2>
         <p style="color: var(--text-secondary); max-width: 400px; font-size: 0.9rem; margin-bottom: 1.5rem;">
-          All FAQ pairs have been embedded and stored. External integrations can now query the collection.
+          All FAQ pairs and variations have been embedded and stored. External integrations can now query the collection.
         </p>
         <button class="btn-secondary" @click="resetFull">Start New Upload</button>
       </div>
@@ -222,7 +253,7 @@
           <div>
             <h2>Review Extracted FAQs</h2>
             <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
-              Generated {{ store.extractedFaqs.length }} FAQ pairs. Review and edit before saving.
+              Generated {{ store.extractedFaqs.length }} FAQ pairs from {{ store.totalFiles }} document(s). Review and edit before saving.
             </p>
           </div>
           <div style="display: flex; gap: 0.75rem; align-items: center;">
@@ -249,6 +280,9 @@
                   v-model="faq.category" 
                   placeholder="Category"
                 />
+                <span style="font-size: 0.7rem; color: var(--text-muted); margin-left: 0.5rem;" :title="faq.filename">
+                  📄 {{ faq.filename }}
+                </span>
               </div>
               <button class="btn-danger-text" @click="deleteFaq(index)" title="Delete FAQ">
                 🗑️ Delete
@@ -284,7 +318,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useSarStore } from '../stores/sarStore'
 
 const store = useSarStore()
@@ -294,8 +328,17 @@ const newDbName = ref('')
 const isDragActive = ref(false)
 const fileInput = ref(null)
 
+const pendingFiles = ref([])
+
 onMounted(() => {
   store.fetchCollections()
+})
+
+const isTargetValid = computed(() => {
+  if (targetMode.value === 'create') {
+    return newDbName.value.trim().length > 0
+  }
+  return store.selectedCollection !== ''
 })
 
 const setTargetMode = (mode) => {
@@ -305,7 +348,7 @@ const setTargetMode = (mode) => {
 
 // Drag & Drop event handlers
 const onDragOver = () => {
-  isDragActive.value = true
+  if (isTargetValid.value) isDragActive.value = true
 }
 
 const onDragLeave = () => {
@@ -314,10 +357,10 @@ const onDragLeave = () => {
 
 const onDrop = (e) => {
   isDragActive.value = false
-  const files = e.dataTransfer.files
-  if (files.length > 0) {
-    processFile(files[0])
-  }
+  if (!isTargetValid.value) return
+  
+  const files = Array.from(e.dataTransfer.files)
+  stageFiles(files)
 }
 
 const triggerFileInput = () => {
@@ -325,42 +368,46 @@ const triggerFileInput = () => {
 }
 
 const onFileSelected = (e) => {
-  const files = e.target.files
-  if (files.length > 0) {
-    processFile(files[0])
+  const files = Array.from(e.target.files)
+  stageFiles(files)
+}
+
+const stageFiles = (files) => {
+  store.error = null
+  for (let file of files) {
+    const ext = file.name.split('.').pop().toLowerCase()
+    if (!['pdf', 'docx', 'txt'].includes(ext)) {
+      store.error = `Unsupported file format: .${ext}. Please upload a .pdf, .docx, or .txt file.`
+      continue
+    }
+    pendingFiles.value.push(file)
   }
 }
 
+const removePendingFile = (index) => {
+  pendingFiles.value.splice(index, 1)
+}
+
 // Validate targets and start text extraction
-const processFile = async (file) => {
+const processStagedFiles = async () => {
   store.error = null
+  
+  if (pendingFiles.value.length === 0) {
+    store.error = 'No files to process.'
+    return
+  }
   
   // 1. Determine target collection name
   let targetCollection = ''
   if (targetMode.value === 'create') {
     const rawName = newDbName.value.trim()
-    if (!rawName) {
-      store.error = 'Please enter a name for the new database.'
-      return
-    }
     // Clean name
     targetCollection = rawName.toLowerCase().replace(/[^a-z0-9_-]/g, '_')
   } else {
     targetCollection = store.selectedCollection
-    if (!targetCollection) {
-      store.error = 'Please select an existing database from the dropdown.'
-      return
-    }
   }
 
-  // 2. Perform validation checks
-  const ext = file.name.split('.').pop().toLowerCase()
-  if (!['pdf', 'docx', 'txt'].includes(ext)) {
-    store.error = `Unsupported file format: .${ext}. Please upload a .pdf, .docx, or .txt file.`
-    return
-  }
-
-  // 3. If in create mode, create the collection first
+  // 2. If in create mode, create the collection first
   if (targetMode.value === 'create') {
     const success = await store.createNewCollection(targetCollection)
     if (!success) return
@@ -369,8 +416,9 @@ const processFile = async (file) => {
   // Set the selected database in store
   store.selectedCollection = targetCollection
 
-  // 4. Run FAQ extraction
-  await store.extractFaqs(file)
+  // 3. Run FAQ extraction
+  await store.extractFaqs(pendingFiles.value)
+  pendingFiles.value = [] // clear staging
 }
 
 const deleteFaq = (index) => {
@@ -379,6 +427,7 @@ const deleteFaq = (index) => {
 
 const cancelUpload = () => {
   store.resetIngestion()
+  pendingFiles.value = []
   if (targetMode.value === 'create') {
     newDbName.value = ''
   }
@@ -394,6 +443,16 @@ const submitIngestion = async () => {
 
 const resetFull = () => {
   store.resetIngestion()
+  pendingFiles.value = []
   newDbName.value = ''
 }
 </script>
+
+<style scoped>
+.dropzone.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: var(--border-color);
+  background: var(--bg-secondary);
+}
+</style>

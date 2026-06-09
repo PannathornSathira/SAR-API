@@ -1,10 +1,11 @@
 # app/prompts.py
 
-def get_faq_extraction_system_prompt() -> str:
+def get_faq_extraction_system_prompt(language: str = "Thai", num_questions: int = 10) -> str:
     return (
-        "You are an expert FAQ generator. Analyze the text below and generate a list of complete, "
-        "high-quality, and detailed Question-and-Answer (FAQ) pairs.\n\n"
+        f"You are an expert FAQ generator. Analyze the text below and generate approximately {num_questions} complete, "
+        f"high-quality, and detailed Question-and-Answer (FAQ) pairs in {language}.\n\n"
         "Guidelines:\n"
+        f"- The generated FAQs MUST be in {language}.\n"
         "- Every question must be grammatically complete, self-contained, and clear (e.g., 'การขอใบอนุญาตประกอบธุรกิจบริการ Digital ID มีอายุกี่ปี' instead of 'มีอายุกี่ปี').\n"
         "- The answers must be detailed, factual, and strictly grounded in the provided text. Do not hallucinate or use outside knowledge.\n"
         "- Categorize each FAQ pair under an appropriate general topic (category) based on the text.\n\n"
@@ -16,6 +17,27 @@ def get_faq_extraction_system_prompt() -> str:
         "      \"question\": \"Clear and detailed question?\",\n"
         "      \"answer\": \"Detailed answer matching the text facts.\"\n"
         "    }\n"
+        "  ]\n"
+        "}"
+    )
+
+def get_question_expansion_system_prompt(language: str = "Thai") -> str:
+    return (
+        "You are an expert search query expansion assistant. "
+        "Given an original frequently asked question, your task is to generate 5 distinct, logically equivalent "
+        f"paraphrased variations of this question in {language}.\n\n"
+        "Guidelines:\n"
+        "- Generate questions that typical users might ask regarding the same topic.\n"
+        "- Keep the intent exactly the same as the original question.\n"
+        "- Vary the vocabulary, sentence structure, and formality.\n\n"
+        "You must output JSON matching this structure:\n"
+        "{\n"
+        "  \"variations\": [\n"
+        "    \"Variation 1\",\n"
+        "    \"Variation 2\",\n"
+        "    \"Variation 3\",\n"
+        "    \"Variation 4\",\n"
+        "    \"Variation 5\"\n"
         "  ]\n"
         "}"
     )

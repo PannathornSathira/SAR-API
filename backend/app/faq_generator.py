@@ -4,7 +4,8 @@ from typing import List, Dict, Any
 from pydantic import BaseModel, Field
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
-from app.prompts import get_faq_extraction_system_prompt
+from langchain_community.callbacks import get_openai_callback
+from app.prompts import get_faq_extraction_system_prompt, get_question_expansion_system_prompt
 
 # Pydantic schemas for structured extraction
 class FAQPair(BaseModel):
@@ -15,7 +16,10 @@ class FAQPair(BaseModel):
 class FAQExtractionResult(BaseModel):
     faqs: List[FAQPair]
 
-def chunk_text(text: str, chunk_size: int = 5000, overlap: int = 500) -> List[str]:
+class QuestionExpansionResult(BaseModel):
+    variations: List[str]
+
+def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 500) -> List[str]:
     """Chunks text into sizes of chunk_size with some overlap."""
     if not text:
         return []
@@ -28,7 +32,7 @@ def chunk_text(text: str, chunk_size: int = 5000, overlap: int = 500) -> List[st
         start += chunk_size - overlap
     return chunks
 
-def extract_faqs_from_text(text: str, filename: str) -> List[Dict[str, str]]:
+def extract_faqs_from_text(text: str, filename: str, language: str = "Thai", num_questions: int = 10) -> List[Dict[str, str]]:
     """
     Analyzes document text and extracts a list of high-quality FAQ pairs.
     
@@ -58,27 +62,77 @@ def extract_faqs_from_text(text: str, filename: str) -> List[Dict[str, str]]:
         return []
         
     extracted_faqs = []
+    total_cost = 0.0
     
     # 3. Process each chunk
     for i, chunk in enumerate(chunks):
         print(f"[FAQ Generator] Processing chunk {i+1}/{len(chunks)}...")
         try:
-            system_prompt = get_faq_extraction_system_prompt()
-            result = structured_llm.invoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=f"Document Source: {filename}\n\nContent Chunk:\n{chunk}")
-            ])
+            system_prompt = get_faq_extraction_system_prompt(language=language, num_questions=num_questions)
+            with get_openai_callback() as cb:
+                result = structured_llm.invoke([
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=f"Document Source: {filename}\n\nContent Chunk:\n{chunk}")
+                ])
+                total_cost += cb.total_cost
             
             # Append generated FAQs
             for item in result.faqs:
                 extracted_faqs.append({
                     "category": item.category.strip(),
                     "question": item.question.strip(),
-                    "answer": item.answer.strip()
+                    "answer": item.answer.strip(),
+                    "filename": filename
                 })
         except Exception as e:
             print(f"[FAQ Generator] Error extracting from chunk {i+1}: {e}")
             continue
             
     print(f"[FAQ Generator] Finished extraction. Generated {len(extracted_faqs)} FAQ pairs.")
-    return extracted_faqs
+    print(f"[FAQ Generator] Extraction Cost (USD): ${total_cost:.4f}")
+    return extracted_faqs, total_cost
+
+def expand_faq_questions(faqs: List[Dict[str, str]], language: str = "Thai") -> tuple[List[Dict[str, str]], float]:
+    """
+    Takes a list of approved FAQs and generates 5 paraphrased question variations for each.
+    Returns the expanded list of FAQs (original + variations) and the cost.
+    """
+    print(f"[FAQ Generator] Starting question expansion for {len(faqs)} FAQs...")
+    
+    try:
+        from app.config import OPENAI_API_KEY
+        llm = init_chat_model("gpt-4o-mini", model_provider="openai", openai_api_key=OPENAI_API_KEY)
+        structured_llm = llm.with_structured_output(QuestionExpansionResult)
+    except Exception as e:
+        print(f"[FAQ Generator] Error initializing LLM for expansion: {e}")
+        return faqs, 0.0
+        
+    expanded_faqs = []
+    total_cost = 0.0
+    system_prompt = get_question_expansion_system_prompt(language=language)
+    
+    for i, faq in enumerate(faqs):
+        print(f"[FAQ Generator] Expanding question {i+1}/{len(faqs)}...")
+        expanded_faqs.append(faq) # Always keep the original
+        try:
+            with get_openai_callback() as cb:
+                result = structured_llm.invoke([
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=f"Original Question:\n{faq['question']}")
+                ])
+                total_cost += cb.total_cost
+                
+            for variation in result.variations:
+                expanded_faqs.append({
+                    "category": faq["category"],
+                    "question": variation.strip(),
+                    "answer": faq["answer"],
+                    "filename": faq.get("filename", "")
+                })
+        except Exception as e:
+            print(f"[FAQ Generator] Error expanding question {i+1}: {e}")
+            continue
+            
+    print(f"[FAQ Generator] Finished expansion. Total pairs now: {len(expanded_faqs)}.")
+    print(f"[FAQ Generator] Expansion Cost (USD): ${total_cost:.4f}")
+    return expanded_faqs, total_cost

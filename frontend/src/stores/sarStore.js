@@ -7,11 +7,25 @@ export const useSarStore = defineStore('sar', {
     collections: [],
     selectedCollection: '',
     
+    // Extraction config
+    language: 'Thai',
+    numQuestions: 10,
+    
     // Ingestion States
-    // 0 = Idle, 1 = Extracting Text, 2 = LLM Generating FAQs, 3 = FAQ Review Grid, 4 = Embedding & Ingesting, 5 = Success
+    // 0 = Idle, 1 = Extracting Text/Generating FAQs, 3 = FAQ Review Grid, 4 = Embedding & Ingesting, 5 = Success
     statusStep: 0,
-    filename: '',
+    
+    // Progress for multiple files
+    totalFiles: 0,
+    processedFiles: 0,
+    currentFileName: '',
+    
+    filename: '', // Just for keeping some legacy stuff if needed, though we track multi-files now
     extractedFaqs: [],
+    
+    // Cost
+    totalExtractionCost: 0.0,
+    totalExpansionCost: 0.0,
     
     // UI Helpers
     loading: false,
@@ -68,34 +82,46 @@ export const useSarStore = defineStore('sar', {
       }
     },
     
-    async extractFaqs(file) {
+    async extractFaqs(files) {
       this.error = null
-      this.filename = file.name
-      this.statusStep = 1 // Step 1: Extracting Text
-      
-      const formData = new FormData()
-      formData.append('file', file)
+      this.statusStep = 1 // Step 1: Extracting / Generation
+      this.totalFiles = files.length
+      this.processedFiles = 0
+      this.extractedFaqs = []
+      this.totalExtractionCost = 0.0
       
       try {
-        // We simulate intermediate transition state visually in UI
-        setTimeout(() => {
-          if (this.statusStep === 1) {
-            this.statusStep = 2 // Step 2: LLM FAQ Generation
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i]
+          this.currentFileName = file.name
+          
+          const formData = new FormData()
+          formData.append('file', file)
+          formData.append('language', this.language)
+          formData.append('num_questions', this.numQuestions)
+          
+          const response = await fetch(`${API_BASE_URL}/api/v1/extract-faq`, {
+            method: 'POST',
+            body: formData
+          })
+          
+          if (!response.ok) {
+            const detail = await response.json()
+            throw new Error(detail.detail || `Extraction failed for ${file.name}`)
           }
-        }, 1500)
-        
-        const response = await fetch(`${API_BASE_URL}/api/v1/extract-faq`, {
-          method: 'POST',
-          body: formData
-        })
-        
-        if (!response.ok) {
-          const detail = await response.json()
-          throw new Error(detail.detail || 'Extraction failed')
+          
+          const data = await response.json()
+          this.extractedFaqs = this.extractedFaqs.concat(data.faqs || [])
+          this.totalExtractionCost += (data.extraction_cost || 0.0)
+          
+          this.processedFiles += 1
         }
         
-        const data = await response.json()
-        this.extractedFaqs = data.faqs || []
+        this.filename = 'Multiple Files'
+        if (files.length === 1) {
+          this.filename = files[0].name
+        }
+        
         this.statusStep = 3 // Step 3: FAQ Review Grid
       } catch (err) {
         console.error(err)
@@ -115,7 +141,8 @@ export const useSarStore = defineStore('sar', {
           body: JSON.stringify({
             collection_name: collectionName,
             filename: this.filename,
-            faqs: this.extractedFaqs
+            faqs: this.extractedFaqs,
+            language: this.language
           })
         })
         
@@ -123,6 +150,9 @@ export const useSarStore = defineStore('sar', {
           const detail = await response.json()
           throw new Error(detail.detail || 'Ingestion failed')
         }
+        
+        const data = await response.json()
+        this.totalExpansionCost = data.expansion_cost || 0.0
         
         this.statusStep = 5 // Step 5: Success
         await this.fetchCollections() // Refresh collections list
@@ -138,6 +168,11 @@ export const useSarStore = defineStore('sar', {
       this.filename = ''
       this.extractedFaqs = []
       this.error = null
+      this.totalFiles = 0
+      this.processedFiles = 0
+      this.currentFileName = ''
+      this.totalExtractionCost = 0.0
+      this.totalExpansionCost = 0.0
     },
     
     async queryCollection(collectionName, query, chatHistory = []) {

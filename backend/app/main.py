@@ -12,7 +12,7 @@ import pypdf
 
 from app.config import PORT
 from app.vector_store import get_collections, create_collection, get_vector_store
-from app.faq_generator import extract_faqs_from_text
+from app.faq_generator import extract_faqs_from_text, expand_faq_questions
 from app.retrieval import retrieve_and_rerank
 from app.agents import rewrite_query, synthesize_answer
 
@@ -38,11 +38,13 @@ class FAQItem(BaseModel):
     category: str
     question: str
     answer: str
+    filename: Optional[str] = ""
 
 class IngestRequest(BaseModel):
     collection_name: str
     filename: str
     faqs: List[FAQItem]
+    language: str = "Thai"
 
 class QueryRequest(BaseModel):
     query: str
@@ -71,7 +73,11 @@ async def api_create_collection(req: CreateCollectionRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/v1/extract-faq")
-async def api_extract_faq(file: UploadFile = File(...)):
+async def api_extract_faq(
+    file: UploadFile = File(...),
+    language: str = Form("Thai"),
+    num_questions: int = Form(10)
+):
     """Extracts clean text from a document and generates FAQ pairs."""
     filename = file.filename
     ext = filename.split(".")[-1].lower() if "." in filename else ""
@@ -91,10 +97,10 @@ async def api_extract_faq(file: UploadFile = File(...)):
         elif ext == "pdf":
             reader = pypdf.PdfReader(io.BytesIO(file_bytes))
             text_pages = []
-            for page in reader.pages:
+            for i, page in enumerate(reader.pages):
                 t = page.extract_text()
                 if t:
-                    text_pages.append(t)
+                    text_pages.append(f"--- Page {i+1} ---\n{t}")
             text = "\n".join(text_pages)
         elif ext == "txt":
             text = file_bytes.decode("utf-8", errors="ignore")
@@ -103,11 +109,12 @@ async def api_extract_faq(file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="No readable text found in document.")
             
         # 2. FAQ Extraction using modular generator
-        extracted_faqs = extract_faqs_from_text(text, filename)
+        extracted_faqs, extraction_cost = extract_faqs_from_text(text, filename, language, num_questions)
         
         return {
             "filename": filename,
-            "faqs": extracted_faqs
+            "faqs": extracted_faqs,
+            "extraction_cost": extraction_cost
         }
     except Exception as e:
         print(f"[main] Error during text extraction/FAQ generation: {e}")
@@ -120,15 +127,24 @@ async def api_ingest_faqs(req: IngestRequest):
         raise HTTPException(status_code=400, detail="FAQ list is empty")
         
     try:
-        # Create documents
-        docs = []
+        # 1. Expand FAQs
+        faqs_to_expand = []
         for faq in req.faqs:
-            page_content = f"คำถาม: {faq.question}\nคำตอบ: {faq.answer}"
+            d = faq.model_dump() if hasattr(faq, 'model_dump') else faq.dict()
+            d['original_question'] = faq.question
+            faqs_to_expand.append(d)
+            
+        expanded_faqs, expansion_cost = expand_faq_questions(faqs_to_expand, language=req.language)
+
+        # 2. Create documents
+        docs = []
+        for faq in expanded_faqs:
+            page_content = f"Question: {faq['question']}\nAnswer: {faq['answer']}"
             metadata = {
-                "category": faq.category,
-                "original_question": faq.question,
-                "answer": faq.answer,
-                "source_file": req.filename
+                "category": faq['category'],
+                "original_question": faq['original_question'],
+                "answer": faq['answer'],
+                "source_file": faq.get('filename') or req.filename
             }
             docs.append(Document(page_content=page_content, metadata=metadata))
             
@@ -136,7 +152,7 @@ async def api_ingest_faqs(req: IngestRequest):
         store = get_vector_store(req.collection_name)
         store.add_documents(docs)
         
-        return {"status": "success", "count": len(docs)}
+        return {"status": "success", "count": len(docs), "expansion_cost": expansion_cost}
     except Exception as e:
         print(f"[main] Error during ingestion: {e}")
         raise HTTPException(status_code=500, detail=str(e))
