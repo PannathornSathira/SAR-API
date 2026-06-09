@@ -103,5 +103,6 @@ def get_vector_store(collection_name: str) -> QdrantVectorStore:
         collection_name=collection_name,
         embedding=embeddings,
         sparse_embedding=sparse_embeddings,
-        retrieval_mode=RetrievalMode.HYBRID
+        retrieval_mode=RetrievalMode.HYBRID,
+        sparse_vector_name="fastembed-sparse"
     )

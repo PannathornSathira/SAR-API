@@ -2,7 +2,7 @@
 
 def get_faq_extraction_system_prompt(language: str = "Thai", num_questions: int = 10) -> str:
     return (
-        f"You are an expert FAQ generator. Analyze the text below and generate approximately {num_questions} complete, "
+        f"You are an expert FAQ generator. Analyze the text below and generate EXACTLY {num_questions} (or fewer if the text lacks sufficient information) complete, "
         f"high-quality, and detailed Question-and-Answer (FAQ) pairs in {language}.\n\n"
         "Guidelines:\n"
         f"- The generated FAQs MUST be in {language}.\n"

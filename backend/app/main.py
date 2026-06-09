@@ -1,6 +1,9 @@
 # app/main.py
 
 import io
+import os
+import csv
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +18,10 @@ from app.vector_store import get_collections, create_collection, get_vector_stor
 from app.faq_generator import extract_faqs_from_text, expand_faq_questions
 from app.retrieval import retrieve_and_rerank
 from app.agents import rewrite_query, synthesize_answer
+from app.rule_faq_generator import extract_faqs_rules
+from fastapi.responses import StreamingResponse
+from qdrant_client import QdrantClient
+from app.config import QDRANT_URL
 
 app = FastAPI(
     title="SAR Engine Manager & API Service",
@@ -39,6 +46,7 @@ class FAQItem(BaseModel):
     question: str
     answer: str
     filename: Optional[str] = ""
+    source_type: Optional[str] = "LLM"
 
 class IngestRequest(BaseModel):
     collection_name: str
@@ -109,7 +117,10 @@ async def api_extract_faq(
             raise HTTPException(status_code=400, detail="No readable text found in document.")
             
         # 2. FAQ Extraction using modular generator
-        extracted_faqs, extraction_cost = extract_faqs_from_text(text, filename, language, num_questions)
+        extracted_faqs_llm, extraction_cost = extract_faqs_from_text(text, filename, language, num_questions)
+        extracted_faqs_rules = extract_faqs_rules(text, filename)
+        
+        extracted_faqs = extracted_faqs_llm + extracted_faqs_rules
         
         return {
             "filename": filename,
@@ -141,10 +152,11 @@ async def api_ingest_faqs(req: IngestRequest):
         for faq in expanded_faqs:
             page_content = f"Question: {faq['question']}\nAnswer: {faq['answer']}"
             metadata = {
-                "category": faq['category'],
-                "original_question": faq['original_question'],
-                "answer": faq['answer'],
-                "source_file": faq.get('filename') or req.filename
+                "category": faq.get('category', ''),
+                "original_question": faq.get('original_question', faq.get('question', '')),
+                "answer": faq.get('answer', ''),
+                "source_file": faq.get('filename') or req.filename,
+                "source_type": faq.get('source_type', 'LLM')
             }
             docs.append(Document(page_content=page_content, metadata=metadata))
             
@@ -152,7 +164,25 @@ async def api_ingest_faqs(req: IngestRequest):
         store = get_vector_store(req.collection_name)
         store.add_documents(docs)
         
-        return {"status": "success", "count": len(docs), "expansion_cost": expansion_cost}
+        # 3. Export to CSV
+        os.makedirs("exports", exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        export_filename = f"exports/{req.collection_name}_{timestamp}.csv"
+        
+        with open(export_filename, mode='w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(["Category", "Filename", "Original Question", "Question Variation", "Answer", "Source Type"])
+            for faq in expanded_faqs:
+                writer.writerow([
+                    faq.get('category', ''),
+                    faq.get('filename', req.filename),
+                    faq.get('original_question', ''),
+                    faq.get('question', ''),
+                    faq.get('answer', ''),
+                    faq.get('source_type', 'LLM')
+                ])
+        
+        return {"status": "success", "count": len(docs), "expansion_cost": expansion_cost, "csv_path": export_filename}
     except Exception as e:
         print(f"[main] Error during ingestion: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -198,4 +228,56 @@ async def api_query_collection(collection_name: str, req: QueryRequest):
         }
     except Exception as e:
         print(f"[main] Error querying collection '{collection_name}': {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/collections/export/{collection_name}")
+async def api_export_collection(collection_name: str):
+    """Exports all points in a collection to a CSV file."""
+    try:
+        client = QdrantClient(url=QDRANT_URL)
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Category", "Filename", "Original Question", "Question", "Answer", "Source Type"])
+        
+        offset = None
+        while True:
+            records, next_page = client.scroll(
+                collection_name=collection_name,
+                limit=100,
+                offset=offset,
+                with_payload=True
+            )
+            
+            for record in records:
+                payload = record.payload
+                metadata = payload.get("metadata", {})
+                
+                cat = metadata.get("category", "")
+                fname = metadata.get("source_file", "")
+                orig_q = metadata.get("original_question", "")
+                ans = metadata.get("answer", "")
+                stype = metadata.get("source_type", "LLM")
+                
+                page_content = payload.get("page_content", "")
+                lines = page_content.split("\n")
+                q_var = ""
+                for line in lines:
+                    if line.startswith("Question: "):
+                        q_var = line[len("Question: "):]
+                        break
+                        
+                writer.writerow([cat, fname, orig_q, q_var, ans, stype])
+                
+            if next_page is None:
+                break
+            offset = next_page
+            
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]), 
+            media_type="text/csv", 
+            headers={"Content-Disposition": f"attachment; filename={collection_name}_export.csv"}
+        )
+    except Exception as e:
+        print(f"[main] Error exporting collection '{collection_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e))

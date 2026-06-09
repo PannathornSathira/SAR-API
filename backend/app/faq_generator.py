@@ -64,11 +64,14 @@ def extract_faqs_from_text(text: str, filename: str, language: str = "Thai", num
     extracted_faqs = []
     total_cost = 0.0
     
+    # Calculate how many questions to ask per chunk to hit the total target
+    target_per_chunk = max(1, (num_questions // len(chunks)) + 1)
+    
     # 3. Process each chunk
     for i, chunk in enumerate(chunks):
         print(f"[FAQ Generator] Processing chunk {i+1}/{len(chunks)}...")
         try:
-            system_prompt = get_faq_extraction_system_prompt(language=language, num_questions=num_questions)
+            system_prompt = get_faq_extraction_system_prompt(language=language, num_questions=target_per_chunk)
             with get_openai_callback() as cb:
                 result = structured_llm.invoke([
                     SystemMessage(content=system_prompt),
@@ -82,11 +85,15 @@ def extract_faqs_from_text(text: str, filename: str, language: str = "Thai", num
                     "category": item.category.strip(),
                     "question": item.question.strip(),
                     "answer": item.answer.strip(),
-                    "filename": filename
+                    "filename": filename,
+                    "source_type": "LLM"
                 })
         except Exception as e:
             print(f"[FAQ Generator] Error extracting from chunk {i+1}: {e}")
             continue
+            
+    # Strictly enforce the target question count
+    extracted_faqs = extracted_faqs[:num_questions]
             
     print(f"[FAQ Generator] Finished extraction. Generated {len(extracted_faqs)} FAQ pairs.")
     print(f"[FAQ Generator] Extraction Cost (USD): ${total_cost:.4f}")
@@ -127,7 +134,9 @@ def expand_faq_questions(faqs: List[Dict[str, str]], language: str = "Thai") -> 
                     "category": faq["category"],
                     "question": variation.strip(),
                     "answer": faq["answer"],
-                    "filename": faq.get("filename", "")
+                    "filename": faq.get("filename", ""),
+                    "original_question": faq.get("original_question", faq["question"]),
+                    "source_type": faq.get("source_type", "LLM")
                 })
         except Exception as e:
             print(f"[FAQ Generator] Error expanding question {i+1}: {e}")
