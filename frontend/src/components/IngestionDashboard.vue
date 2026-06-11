@@ -397,14 +397,39 @@
               {{ store.totalFiles }} document(s). Review and edit before saving.
             </p>
           </div>
-          <div style="display: flex; gap: 0.75rem; align-items: center">
-            <button class="btn-secondary" @click="cancelUpload">Cancel</button>
+          <div
+            style="
+              display: flex;
+              gap: 0.75rem;
+              align-items: center;
+              justify-content: flex-end;
+            "
+          >
+            <button
+              class="btn-secondary"
+              style="
+                border-color: var(--accent-purple);
+                color: var(--accent-purple);
+                min-width: 170px;
+                justify-content: center;
+              "
+              @click="addManualFaq"
+            >
+              ➕ Add manually
+            </button>
+            <button
+              class="btn-secondary"
+              style="min-width: 110px; justify-content: center"
+              @click="cancelUpload"
+            >
+              Cancel
+            </button>
             <button
               class="btn-primary"
               @click="submitIngestion"
-              style="width: auto"
+              style="min-width: 180px; justify-content: center"
             >
-              Save & Ingest ({{ store.extractedFaqs.length }} pairs)
+              Save & Ingest ({{ store.extractedFaqs.length }})
             </button>
           </div>
         </div>
@@ -442,7 +467,8 @@
                   "
                   :title="faq.filename"
                 >
-                  📄 {{ faq.filename }} | ⚙️ Source: {{ faq.source_type || 'LLM' }}
+                  📄 {{ faq.filename }} | ⚙️ Source:
+                  {{ faq.source_type || "LLM" }}
                 </span>
               </div>
               <button
@@ -589,8 +615,21 @@ const deleteFaq = (index) => {
   store.extractedFaqs.splice(index, 1);
 };
 
+const addManualFaq = () => {
+  store.extractedFaqs.unshift({
+    category: "",
+    question: "",
+    answer: "",
+    filename: "Manual Entry",
+    source_type: "Manual",
+  });
+};
+
 const downloadDbCsv = (collection) => {
-  window.open(`http://localhost:8000/api/v1/collections/export/${collection}`, '_blank');
+  window.open(
+    `http://localhost:8000/api/v1/collections/export/${collection}`,
+    "_blank",
+  );
 };
 
 const cancelUpload = () => {

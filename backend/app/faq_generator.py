@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_community.callbacks import get_openai_callback
-from app.prompts import get_faq_extraction_system_prompt, get_question_expansion_system_prompt
+from app.prompts import get_faq_extraction_system_prompt, get_question_expansion_system_prompt, get_rule_faq_cleaning_system_prompt
 
 # Pydantic schemas for structured extraction
 class FAQPair(BaseModel):
@@ -145,3 +145,66 @@ def expand_faq_questions(faqs: List[Dict[str, str]], language: str = "Thai") -> 
     print(f"[FAQ Generator] Finished expansion. Total pairs now: {len(expanded_faqs)}.")
     print(f"[FAQ Generator] Expansion Cost (USD): ${total_cost:.4f}")
     return expanded_faqs, total_cost
+
+def clean_rule_faqs(faqs: List[Dict[str, str]], language: str = "Thai") -> tuple[List[Dict[str, str]], float]:
+    """
+    Cleans up rule-based FAQ extractions using LLM.
+    """
+    if not faqs:
+        return [], 0.0
+
+    print(f"[FAQ Generator] Starting rule-based FAQ cleaning for {len(faqs)} FAQs...")
+    
+    try:
+        from app.config import OPENAI_API_KEY
+        llm = init_chat_model("gpt-4o-mini", model_provider="openai", openai_api_key=OPENAI_API_KEY)
+        structured_llm = llm.with_structured_output(FAQExtractionResult)
+    except Exception as e:
+        print(f"[FAQ Generator] Error initializing LLM for rule cleaning: {e}")
+        return faqs, 0.0
+        
+    cleaned_faqs = []
+    total_cost = 0.0
+    system_prompt = get_rule_faq_cleaning_system_prompt(language=language)
+    
+    # Process in batches to avoid context limit issues
+    batch_size = 20
+    for i in range(0, len(faqs), batch_size):
+        batch = faqs[i:i + batch_size]
+        print(f"[FAQ Generator] Cleaning batch {i//batch_size + 1} ({len(batch)} items)...")
+        
+        batch_text = ""
+        for j, faq in enumerate(batch):
+            batch_text += f"Item {j+1}:\n"
+            batch_text += f"Category: {faq.get('category', '')}\n"
+            batch_text += f"Question: {faq.get('question', '')}\n"
+            batch_text += f"Answer: {faq.get('answer', '')}\n"
+            batch_text += f"Filename: {faq.get('filename', '')}\n\n"
+            
+        try:
+            with get_openai_callback() as cb:
+                result = structured_llm.invoke([
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=f"Rule-Based FAQs to Clean:\n\n{batch_text}")
+                ])
+                total_cost += cb.total_cost
+                
+            for item in result.faqs:
+                cleaned_faqs.append({
+                    "category": item.category.strip(),
+                    "question": item.question.strip(),
+                    "answer": item.answer.strip(),
+                    # Attempt to preserve original filename if LLM doesn't change it much, else use first item's filename
+                    "filename": batch[0].get('filename', 'Unknown'),
+                    "source_type": "Rule-based (Cleaned)"
+                })
+        except Exception as e:
+            print(f"[FAQ Generator] Error cleaning batch {i//batch_size + 1}: {e}")
+            # Fallback: keep original if cleaning fails
+            cleaned_faqs.extend(batch)
+            continue
+            
+    print(f"[FAQ Generator] Finished rule cleaning. Total clean pairs: {len(cleaned_faqs)}.")
+    print(f"[FAQ Generator] Cleaning Cost (USD): ${total_cost:.4f}")
+    return cleaned_faqs, total_cost
+

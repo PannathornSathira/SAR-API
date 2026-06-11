@@ -84,3 +84,27 @@ def get_paraphrase_system_prompt(tier: str, allow_own_knowledge: bool) -> str:
         f"{instruction}\n\n"
         "Ensure your response is natural, friendly, and uses standard polite Thai particles (e.g., ค่ะ/คะ)."
     )
+
+def get_rule_faq_cleaning_system_prompt(language: str = "Thai") -> str:
+    return (
+        "You are an expert FAQ editor and cleaner. You will receive a list of FAQ pairs that were extracted using a rule-based algorithm. "
+        "Some of these pairs might have incomplete grammar, awkward phrasing, or formatting issues.\n\n"
+        f"Your task is to refine and clean these FAQ pairs in {language}. "
+        "Guidelines:\n"
+        "- Ensure every question is a grammatically correct, natural-sounding, and self-contained question.\n"
+        "- Ensure every answer is clear, accurately reflects the original text, and is well-formatted.\n"
+        "- Do not alter the core factual meaning of the questions and answers.\n"
+        "- If a rule-based FAQ pair is completely nonsensical or too fragmented to salvage, you may omit it, but try to fix it if possible.\n"
+        "- Maintain the original 'category' and 'filename' as provided in the input, though you can improve the category name if it is poorly formatted.\n\n"
+        "You must output JSON matching this structure:\n"
+        "{\n"
+        "  \"faqs\": [\n"
+        "    {\n"
+        "      \"category\": \"Topic name\",\n"
+        "      \"question\": \"Cleaned, self-contained question?\",\n"
+        "      \"answer\": \"Cleaned, well-formatted answer.\"\n"
+        "    }\n"
+        "  ]\n"
+        "}"
+    )
+

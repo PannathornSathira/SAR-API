@@ -5,6 +5,7 @@ const API_BASE_URL = 'http://localhost:8000'
 export const useSarStore = defineStore('sar', {
   state: () => ({
     collections: [],
+    collectionStats: [],
     selectedCollection: '',
     
     // Extraction config
@@ -52,6 +53,34 @@ export const useSarStore = defineStore('sar', {
         this.error = err.message
       } finally {
         this.loading = false
+      }
+    },
+    
+    async fetchCollectionStats() {
+      this.loading = true
+      this.error = null
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/collections/stats`)
+        if (!response.ok) throw new Error('Failed to load collection stats')
+        const data = await response.json()
+        this.collectionStats = data.stats || []
+      } catch (err) {
+        console.error(err)
+        this.error = err.message
+      } finally {
+        this.loading = false
+      }
+    },
+    
+    async fetchCollectionFaqs(collectionName) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/collections/${collectionName}/faqs?limit=50`)
+        if (!response.ok) throw new Error('Failed to load FAQs')
+        const data = await response.json()
+        return data.faqs || []
+      } catch (err) {
+        console.error(err)
+        return []
       }
     },
     

@@ -15,7 +15,7 @@ import pypdf
 
 from app.config import PORT
 from app.vector_store import get_collections, create_collection, get_vector_store
-from app.faq_generator import extract_faqs_from_text, expand_faq_questions
+from app.faq_generator import extract_faqs_from_text, expand_faq_questions, clean_rule_faqs
 from app.retrieval import retrieve_and_rerank
 from app.agents import rewrite_query, synthesize_answer
 from app.rule_faq_generator import extract_faqs_rules
@@ -64,6 +64,28 @@ async def api_get_collections():
     try:
         cols = get_collections()
         return {"collections": cols}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/collections/stats")
+async def api_get_collections_stats():
+    """Returns basic stats for each valid collection in Qdrant."""
+    try:
+        valid_cols = get_collections()
+        client = QdrantClient(url=QDRANT_URL)
+        stats = []
+        for col in valid_cols:
+            try:
+                info = client.get_collection(col)
+                stats.append({
+                    "name": col,
+                    "points_count": info.points_count,
+                    "status": info.status.value if hasattr(info.status, 'value') else str(info.status)
+                })
+            except Exception as e:
+                print(f"[main] Error getting stats for collection {col}: {e}")
+                continue
+        return {"stats": stats}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -120,12 +142,16 @@ async def api_extract_faq(
         extracted_faqs_llm, extraction_cost = extract_faqs_from_text(text, filename, language, num_questions)
         extracted_faqs_rules = extract_faqs_rules(text, filename)
         
-        extracted_faqs = extracted_faqs_llm + extracted_faqs_rules
+        # 3. Clean rule-based FAQs
+        cleaned_rules, cleaning_cost = clean_rule_faqs(extracted_faqs_rules, language)
+        total_extraction_cost = extraction_cost + cleaning_cost
+        
+        extracted_faqs = extracted_faqs_llm + cleaned_rules
         
         return {
             "filename": filename,
             "faqs": extracted_faqs,
-            "extraction_cost": extraction_cost
+            "extraction_cost": total_extraction_cost
         }
     except Exception as e:
         print(f"[main] Error during text extraction/FAQ generation: {e}")
@@ -280,4 +306,43 @@ async def api_export_collection(collection_name: str):
         )
     except Exception as e:
         print(f"[main] Error exporting collection '{collection_name}': {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/collections/{collection_name}/faqs")
+async def api_get_collection_faqs(collection_name: str, limit: int = 100):
+    """Fetches a sample of FAQs from a collection."""
+    try:
+        client = QdrantClient(url=QDRANT_URL)
+        records, _ = client.scroll(
+            collection_name=collection_name,
+            limit=limit,
+            with_payload=True
+        )
+        
+        faqs = []
+        for record in records:
+            payload = record.payload
+            metadata = payload.get("metadata", {})
+            page_content = payload.get("page_content", "")
+            
+            q_var = ""
+            lines = page_content.split("\n")
+            for line in lines:
+                if line.startswith("Question: "):
+                    q_var = line[len("Question: "):]
+                    break
+                    
+            faqs.append({
+                "id": str(record.id),
+                "category": metadata.get("category", ""),
+                "original_question": metadata.get("original_question", ""),
+                "question": q_var,
+                "answer": metadata.get("answer", ""),
+                "filename": metadata.get("source_file", ""),
+                "source_type": metadata.get("source_type", "")
+            })
+            
+        return {"faqs": faqs}
+    except Exception as e:
+        print(f"[main] Error getting FAQs for '{collection_name}': {e}")
         raise HTTPException(status_code=500, detail=str(e))

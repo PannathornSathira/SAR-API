@@ -28,6 +28,13 @@
         >
           ⚡ API Playground & Tester
         </button>
+        <button 
+          class="tab-btn" 
+          :class="{ active: activeTab === 'dashboard' }"
+          @click="activeTab = 'dashboard'"
+        >
+          📊 System Dashboard
+        </button>
       </nav>
     </header>
 
@@ -48,10 +55,12 @@
 import { ref, computed } from 'vue'
 import IngestionDashboard from './components/IngestionDashboard.vue'
 import ApiPlayground from './components/ApiPlayground.vue'
+import SystemDashboard from './components/SystemDashboard.vue'
 
 const activeTab = ref('ingestion')
 
 const currentTabComponent = computed(() => {
+  if (activeTab.value === 'dashboard') return SystemDashboard
   return activeTab.value === 'ingestion' ? IngestionDashboard : ApiPlayground
 })
 </script>
