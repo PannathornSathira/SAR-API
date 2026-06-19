@@ -80,7 +80,7 @@ def retrieve_and_rerank(collection_name: str, query: str) -> tuple[list, float]:
     reranked_docs.sort(key=lambda x: x[1], reverse=True)
     
     best_score = float(reranked_docs[0][1]) if reranked_docs else 0.0
-    print(f"[RAG] Search complete in {time.time() - start_time:.4f}s. Best score: {best_score:.4f}")
+    print(f"[SAR] Search complete in {time.time() - start_time:.4f}s. Best score: {best_score:.4f}")
     
     # Filter top 3 documents
     final_docs = reranked_docs[:3]

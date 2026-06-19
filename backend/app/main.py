@@ -13,7 +13,7 @@ from langchain_core.documents import Document
 import docx
 import pypdf
 
-from app.config import PORT
+from app.config import ALLOW_OWN_KNOWLEDGE, PORT
 from app.vector_store import get_collections, create_collection, get_vector_store
 from app.faq_generator import extract_faqs_from_text, expand_faq_questions, clean_rule_faqs
 from app.retrieval import retrieve_and_rerank
@@ -25,7 +25,7 @@ from app.config import QDRANT_URL
 
 app = FastAPI(
     title="SAR Engine Manager & API Service",
-    description="Admin UI backend and external integration gateway for the SAR FAQ RAG system."
+    description="Admin UI backend and external integration gateway for the SAR FAQ system."
 )
 
 # Enable CORS for frontend API calls
@@ -57,6 +57,7 @@ class IngestRequest(BaseModel):
 class QueryRequest(BaseModel):
     query: str
     chat_history: List[Dict[str, str]] = []
+    allow_own_knowledge: Optional[bool] = None
 
 @app.get("/api/v1/collections")
 async def api_get_collections():
@@ -215,7 +216,7 @@ async def api_ingest_faqs(req: IngestRequest):
 
 @app.post("/api/v1/query/{collection_name}")
 async def api_query_collection(collection_name: str, req: QueryRequest):
-    """Exposes a dynamic RAG endpoint for external application queries."""
+    """Exposes a dynamic SAR query endpoint for external application queries."""
     # Ensure collection exists
     collection_name = collection_name.strip().lower()
     valid_cols = get_collections()
@@ -223,14 +224,25 @@ async def api_query_collection(collection_name: str, req: QueryRequest):
         raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found or not initialized in this app")
         
     try:
+        effective_allow_own_knowledge = (
+            ALLOW_OWN_KNOWLEDGE
+            if req.allow_own_knowledge is None
+            else req.allow_own_knowledge
+        )
+
         # 1. Query Rewrite (using memory)
         rewritten = rewrite_query(req.query, req.chat_history)
         
         # 2. Retrieve & Rerank (using tokenization and CrossEncoder)
         contexts, best_score = retrieve_and_rerank(collection_name, rewritten)
         
-        # 3. Synthesize Answer (Threshold logic + Fallback)
-        response_text, match_type = synthesize_answer(rewritten, contexts, best_score)
+        # 3. Write Answer (Threshold logic + Fallback)
+        response_text, match_type = synthesize_answer(
+            rewritten,
+            contexts,
+            best_score,
+            allow_own_knowledge=effective_allow_own_knowledge
+        )
         
         # Format sources
         sources = list(set([c["source_file"] for c in contexts]))
@@ -249,6 +261,7 @@ async def api_query_collection(collection_name: str, req: QueryRequest):
             "response": response_text,
             "match_type": match_type,
             "score": best_score,
+            "allow_own_knowledge": effective_allow_own_knowledge,
             "sources": sources,
             "context": formatted_context
         }

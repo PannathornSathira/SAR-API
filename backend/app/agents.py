@@ -1,5 +1,6 @@
 # app/agents.py
 
+from typing import Optional
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.config import ALLOW_OWN_KNOWLEDGE, OPENAI_API_KEY
@@ -33,18 +34,24 @@ def rewrite_query(query: str, chat_history: list[dict]) -> str:
         print(f"[Agents] Error rewriting query: {e}. Using original.")
         return query
 
-def synthesize_answer(query: str, contexts: list[dict], best_score: float) -> tuple[str, str]:
+def synthesize_answer(
+    query: str,
+    contexts: list[dict],
+    best_score: float,
+    allow_own_knowledge: Optional[bool] = None
+) -> tuple[str, str]:
     """
-    Synthesizes the answer based on Reranker score and context.
+    Writes the answer based on Reranker score and system-selected context.
     Returns (response_text, match_type).
     
     Threshold Logic:
-    - Exact Match (score >= 0.525): Paraphrase top context.
-    - Related Match (0.30 <= score < 0.525): Paraphrase context for related info.
+    - Exact Match (score >= 0.525): Paraphrase the selected knowledge-base answer.
+    - Related Match (0.30 <= score < 0.525): Summarize selected related FAQ contexts.
     - No Match (score < 0.30):
-        - If ALLOW_OWN_KNOWLEDGE=true -> Answer using LLM knowledge + [OWN_KNOWLEDGE] tag.
+        - If own knowledge is enabled -> Answer using LLM knowledge + [OWN_KNOWLEDGE] tag.
         - If disabled -> Return standard Thai fallback.
     """
+    can_use_own_knowledge = ALLOW_OWN_KNOWLEDGE if allow_own_knowledge is None else allow_own_knowledge
     fallback_message = "ต้องขออภัยด้วยนะคะ ข้อมูลที่คุณค้นหาอยู่นอกเหนือขอบเขตในฐานข้อมูล..."
     
     # 1. Determine Tier
@@ -56,12 +63,12 @@ def synthesize_answer(query: str, contexts: list[dict], best_score: float) -> tu
         tier = "none"
         
     # 2. Short-circuit if no match and own knowledge is disabled
-    if tier == "none" and not ALLOW_OWN_KNOWLEDGE:
-        print("[Agents] Score is below threshold and ALLOW_OWN_KNOWLEDGE is disabled. Returning fallback.")
+    if tier == "none" and not can_use_own_knowledge:
+        print("[Agents] Score is below threshold and own knowledge is disabled. Returning fallback.")
         return fallback_message, "none"
         
     # 3. Setup prompt
-    system_prompt = get_paraphrase_system_prompt(tier, ALLOW_OWN_KNOWLEDGE)
+    system_prompt = get_paraphrase_system_prompt(tier, can_use_own_knowledge)
     
     # Format context for LLM
     context_text = ""

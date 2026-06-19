@@ -58,13 +58,15 @@ def get_paraphrase_system_prompt(tier: str, allow_own_knowledge: bool) -> str:
     """
     if tier == "exact":
         instruction = (
-            "CRITICAL INSTRUCTION: Your ONLY job is to paraphrase the provided context to directly answer the user's question.\n"
+            "CRITICAL INSTRUCTION: The system has selected a high-confidence knowledge-base answer.\n"
+            "Your ONLY job is to paraphrase the provided context to directly answer the user's question.\n"
             "Do not use outside knowledge. Keep the response factual and strictly based on the Context."
         )
     elif tier == "related":
         instruction = (
-            "CRITICAL INSTRUCTION: We did not find the exact answer in the database, but we found related information.\n"
-            "Your ONLY job is to paraphrase the provided context to offer helpful, related information."
+            "CRITICAL INSTRUCTION: The system did not find one exact answer, but it selected related FAQ contexts from the knowledge base.\n"
+            "Your ONLY job is to summarize and paraphrase only those selected contexts to offer helpful, related information.\n"
+            "Do not use outside knowledge."
         )
     else:  # none
         if allow_own_knowledge:
@@ -107,4 +109,3 @@ def get_rule_faq_cleaning_system_prompt(language: str = "Thai") -> str:
         "  ]\n"
         "}"
     )
-

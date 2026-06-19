@@ -1,6 +1,6 @@
 # SAR Engine Manager & API Service
 
-A standalone, single-user system that allows users to upload documents, automatically extract them into FAQ pairs using an LLM or a cleaned rule-based approach, review/edit the extraction in a modular Admin UI, ingest them into Qdrant, and query them using a highly-optimized hybrid dense-sparse RAG pipeline.
+A standalone, single-user SAR system that allows users to upload documents, automatically extract them into FAQ pairs using an LLM as a language expert or a cleaned rule-based approach, review/edit the extraction in a modular Admin UI, ingest them into Qdrant, and query them using a highly-optimized hybrid dense-sparse SAR pipeline.
 
 ---
 
@@ -27,28 +27,33 @@ A standalone, single-user system that allows users to upload documents, automati
 
 ---
 
-## 1. Prerequisites & Database Setup
+## 1. Quick Start: Docker Deployment (Recommended)
 
-### Run Qdrant Vector Database
-You must have a running Qdrant instance. This project includes a `docker-compose.yml` configuration configured to mount storage directly inside the project and map to port `6335` (to avoid conflicts with default ports of other projects). Start it by running this command at the root of the project:
-```bash
-docker compose up -d
-```
-By default, the backend connects to `http://localhost:6335`.
+The easiest way to run the entire SAR Engine Manager (Frontend, Backend, and Database) is using Docker Compose. This ensures a consistent environment and zero manual configuration for database connections.
 
-### Environment Variables
-You need an OpenAI API key. Create a `.env` file in the `backend/` directory:
-```env
-OPENAI_API_KEY=your-openai-api-key-here
-QDRANT_URL=http://localhost:6335
-ALLOW_OWN_KNOWLEDGE=false
-PORT=8000
-```
+1. **Clone the repository.**
+2. **Create backend environment variables**:
+   ```bash
+   cp backend/.env.example backend/.env
+   ```
+   *Edit `backend/.env` and add your `OPENAI_API_KEY`.*
+3. **Start the whole stack**:
+   ```bash
+   docker-compose up -d --build
+   ```
+
+Once running, you can access the services at:
+- **Admin UI (Frontend)**: `http://localhost:80`
+- **API Documentation (Backend)**: `http://localhost:8000/docs`
+- **Qdrant DB**: `http://localhost:6335`
 
 ---
 
-## 2. Backend Setup
+## 2. Local Development Setup (Manual)
 
+If you prefer to run the services manually without Docker (e.g., for active development):
+
+### Backend Setup
 1. **Navigate to the backend folder**:
    ```bash
    cd backend
@@ -57,33 +62,30 @@ PORT=8000
    ```bash
    pip install -r requirements.txt
    ```
-3. **Start the backend server**:
+3. **Set up `.env`**: Copy `.env.example` to `.env` and add your OpenAI key. For local dev, `QDRANT_URL=http://localhost:6335` is correct.
+4. **Start the backend server**:
    ```bash
    python run.py
    ```
-   The backend API will run at `http://localhost:8000`.
 
----
-
-## 3. Frontend Setup
-
+### Frontend Setup
 1. **Navigate to the frontend folder**:
    ```bash
-   cd ../frontend
+   cd frontend
    ```
 2. **Install node dependencies**:
    ```bash
    npm install
    ```
-3. **Start the Vite development server**:
+3. **Set up `.env`**: Copy `.env.example` to `.env`. For local dev, `VITE_API_URL=http://localhost:8000` is correct.
+4. **Start the Vite development server**:
    ```bash
    npm run dev
    ```
-   The Admin UI dashboard will run at `http://localhost:5173`.
 
 ---
 
-## 4. Query RAG Pipeline Logic
+## 4. Query SAR Pipeline Logic
 
 When external systems call the dynamic endpoint:
 `POST /api/v1/query/{collection_name}`

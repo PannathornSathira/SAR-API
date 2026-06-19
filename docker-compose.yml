@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   qdrant:
     image: qdrant/qdrant:latest
@@ -9,4 +7,27 @@ services:
       - "6336:6334"
     volumes:
       - ./backend/qdrant_storage:/qdrant/storage
+    restart: always
+
+  backend:
+    build: ./backend
+    container_name: sar_api_backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - PORT=8000
+    depends_on:
+      - qdrant
+    restart: always
+
+  frontend:
+    build: ./frontend
+    container_name: sar_api_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
     restart: always
