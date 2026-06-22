@@ -2,6 +2,11 @@
 
 This is the backend API for the SAR FAQ system. It handles FAQ extraction from documents, ingestion into Qdrant vector database, and querying using LLMs.
 
+### Key Features
+- **Intelligent FAQ Generation:** Automatically extracts FAQ pairs from documents (.pdf, .docx, .txt) using LLM and Rule-based logic.
+- **Hybrid Semantic Search:** Uses Dense vectors (OpenAI) and Sparse vectors (BM25) for high accuracy retrieval.
+- **Dynamic Multilingual Support:** Automatically detects the user's language and the database's primary language. It dynamically translates queries for optimal hybrid search performance and responds natively in the user's original language!
+
 ## Prerequisites
 - Python 3.10+
 - Qdrant Vector Database (can be run locally via Docker)

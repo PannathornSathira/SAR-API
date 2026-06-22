@@ -42,17 +42,17 @@ def get_question_expansion_system_prompt(language: str = "Thai") -> str:
         "}"
     )
 
-def get_query_rewrite_system_prompt() -> str:
+def get_query_rewrite_system_prompt(db_language: str = "Thai") -> str:
     return (
         "You are an expert search query generator. "
         "Given the following chat history and a follow-up question, "
         "rephrase the follow-up question to be a standalone query that can be used to search a knowledge base. "
         "Do NOT answer the question, just return the standalone query. "
         "If the follow-up question doesn't need context, return it as is. "
-        "Keep it in the original language of the follow-up question."
+        f"CRITICAL: You MUST translate the standalone query into {db_language} to ensure optimal search results in the target database."
     )
 
-def get_paraphrase_system_prompt(tier: str, allow_own_knowledge: bool) -> str:
+def get_paraphrase_system_prompt(tier: str, allow_own_knowledge: bool, user_language: str = "Thai") -> str:
     """
     tier: 'exact', 'related', 'none'
     """
@@ -78,13 +78,14 @@ def get_paraphrase_system_prompt(tier: str, allow_own_knowledge: bool) -> str:
         else:
             instruction = (
                 "CRITICAL INSTRUCTION: The Vector DB did not return any relevant database context for this query.\n"
-                "You must output exactly the text 'UNKNOWN_INFO' and nothing else."
+                f"You must generate a polite fallback message in {user_language} explaining that the requested information is outside the scope of the current database. "
+                "You MUST append the exact string '[UNKNOWN_INFO]' at the very end of your response."
             )
 
     return (
-        "You are a friendly and polite customer service assistant speaking in Thai.\n"
+        f"You are a friendly and polite customer service assistant.\n"
         f"{instruction}\n\n"
-        "Ensure your response is natural, friendly, and uses standard polite Thai particles (e.g., ค่ะ/คะ)."
+        f"Ensure your response is natural, friendly, and you MUST answer natively in {user_language}."
     )
 
 def get_rule_faq_cleaning_system_prompt(language: str = "Thai") -> str:

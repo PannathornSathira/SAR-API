@@ -19,6 +19,7 @@ from app.faq_generator import extract_faqs_from_text, expand_faq_questions, clea
 from app.retrieval import retrieve_and_rerank
 from app.agents import rewrite_query, synthesize_answer
 from app.rule_faq_generator import extract_faqs_rules
+from app.language_utils import detect_language, get_db_language
 from fastapi.responses import StreamingResponse
 from qdrant_client import QdrantClient
 from app.config import QDRANT_URL
@@ -230,18 +231,24 @@ async def api_query_collection(collection_name: str, req: QueryRequest):
             else req.allow_own_knowledge
         )
 
-        # 1. Query Rewrite (using memory)
-        rewritten = rewrite_query(req.query, req.chat_history)
+        # 1. Detect Languages
+        user_language = detect_language(req.query)
+        db_language = get_db_language(collection_name)
+        print(f"[Query] User Language: {user_language}, DB Language: {db_language}")
+
+        # 2. Query Rewrite (translate to db_language)
+        search_query = rewrite_query(req.query, req.chat_history, db_language)
         
-        # 2. Retrieve & Rerank (using tokenization and CrossEncoder)
-        contexts, best_score = retrieve_and_rerank(collection_name, rewritten)
+        # 3. Retrieve & Rerank
+        contexts, best_score = retrieve_and_rerank(collection_name, search_query)
         
-        # 3. Write Answer (Threshold logic + Fallback)
+        # 4. Write Answer (in user_language)
         response_text, match_type = synthesize_answer(
-            rewritten,
+            req.query,
             contexts,
             best_score,
-            allow_own_knowledge=effective_allow_own_knowledge
+            allow_own_knowledge=effective_allow_own_knowledge,
+            user_language=user_language
         )
         
         # Format sources
